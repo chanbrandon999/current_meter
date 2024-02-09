@@ -1,4 +1,3 @@
-#include "arduino_secrets.h"
 /* Basic Multi Threading Arduino Example
    This example code is in the Public Domain (or CC0 licensed, at your option.)
    Unless required by applicable law or agreed to in writing, this
@@ -228,10 +227,10 @@ void TaskACQDAT(void *pvParameters){  // This is a task.
   }
 
   // see for settings:    https://github.com/wollewald/ADS1115_WE/blob/master/examples/Single_Shot/Single_Shot.ino
-  adc.setVoltageRange_mV(ADS1115_RANGE_1024); //comment line/change parameter to change range
+  adc.setVoltageRange_mV(ADS1115_RANGE_2048); //comment line/change parameter to change range
   // adc.setCompareChannels(ADS1115_COMP_0_GND); //uncomment if you want to change the default
   // adc.setConvRate(ADS1115_860_SPS ); //uncomment if you want to change the default
-  adc.setConvRate(ADS1115_475_SPS ); //uncomment if you want to change the default
+  adc.setConvRate(ADS1115_475_SPS); //uncomment if you want to change the default
   // adc.setMeasureMode(ADS1115_CONTINUOUS); //uncomment if you want to change the default
 
 
@@ -254,9 +253,9 @@ void TaskACQDAT(void *pvParameters){  // This is a task.
   }
 }
 
-#define AVG_BUCKET 500
-#define RESISTOR 160.0
-#define CT_RATIO 100.0 / 0.050
+#define AVG_BUCKET 1024
+#define RESISTOR 150.0
+#define CT_RATIO (100.0 / 0.050)
 void TaskSerialSend(void *pvParameters){  // This is a task.
 
   vin_read_t vr = {0};
@@ -277,16 +276,19 @@ void TaskSerialSend(void *pvParameters){  // This is a task.
         t_calc[i] = vr.t_millis;
         // adcread = vr.v_ch_1 - vr.v_ch_0;
         // v_calc[i] = vr.v_ch_1 - vr.v_ch_0;
+        // v_calc[i] = vr.v_ch_d01 / 2.0;
         v_calc[i] = vr.v_ch_d01;
         i = ++i % AVG_BUCKET;
 
         float sum = 0;
         float square = 0;
         float max = 0;
+        int t_min = t_calc[i];
         for (int j = 0; j < AVG_BUCKET; j++)
         {
           sum += abs(v_calc[j]);
           square += v_calc[j] * v_calc[j];
+          t_min = t_calc[j] < t_min ? t_calc[j] : t_min ;
           // max = abs(vr.v_ch_1) > max ? abs(vr.v_ch_1) : max;
           // max = abs(vr.v_ch_0) > max ? abs(vr.v_ch_0) : max;
           max = abs(vr.v_ch_d01) > max ? abs(vr.v_ch_d01) : max;
@@ -294,7 +296,9 @@ void TaskSerialSend(void *pvParameters){  // This is a task.
         
         adc_avg = sum / AVG_BUCKET;
         adc_max = max; 
-        square /= abs((float)t_calc[i] - t_calc[(i + 1) % AVG_BUCKET]);
+        // square /= (float)(t_calc[i] - t_calc[(i + 1) % AVG_BUCKET]);
+        // square /= (float)(t_calc[i] - t_min);
+        square /= (float)(AVG_BUCKET);
         adc_rms = sqrt(square);
         adcread = v_calc[i];
         adc_i_rms = adc_rms * CT_RATIO / RESISTOR;
@@ -311,7 +315,6 @@ void TaskSerialSend(void *pvParameters){  // This is a task.
         Serial.print(adc_i_rms);
         Serial.print(" \tmax:");
         Serial.println(adc_max);
-
 
 
         t_last = vr.t_millis;
@@ -443,6 +446,8 @@ float readChannel(ADS1115_MUX channel) {
   voltage = adc.getResult_V(); // alternative: getResult_mV for Millivolt
   return voltage;
 }
+
+
 /*
   Since Adcread is READ_WRITE variable, onAdcreadChange() is
   executed every time a new value is received from IoT Cloud.
